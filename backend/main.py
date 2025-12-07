@@ -1,8 +1,9 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
 import base64
 import json
+import re
 from io import BytesIO
 from PIL import Image
 import os
@@ -147,6 +148,134 @@ async def get_all_dates():
         return {"dates": dates}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch dates: {str(e)}")
+
+
+@app.get("/api/analytics")
+async def get_analytics():
+    """Get analytics data for dashboard"""
+    try:
+        scans_collection = database.scans
+        
+        # Get all documents
+        all_items = []
+        all_dates = []
+        async for scan in scans_collection.find().sort("date", 1):
+            all_dates.append(scan.get("date", ""))
+            items = scan.get("items", [])
+            for item in items:
+                item["date"] = scan.get("date", "")
+                all_items.append(item)
+        
+        if not all_items:
+            return {
+                "completion_rate": 0,
+                "total_items": 0,
+                "total_tasks": 0,
+                "completed_tasks": 0,
+                "type_distribution": {"TASK": 0, "EVENT": 0, "NOTE": 0},
+                "status_distribution": {"TODO": 0, "IN_PROGRESS": 0, "DONE": 0, "SCHEDULED": 0},
+                "productivity_trend": [],
+                "active_days": 0,
+                "current_streak": 0,
+                "longest_streak": 0,
+                "items_by_day_of_week": {}
+            }
+        
+        # Calculate completion rate (for tasks only)
+        tasks = [item for item in all_items if item.get("type") == "TASK"]
+        total_tasks = len(tasks)
+        completed_tasks = len([t for t in tasks if t.get("status") == "DONE"])
+        completion_rate = (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
+        
+        # Type distribution
+        type_distribution = {"TASK": 0, "EVENT": 0, "NOTE": 0}
+        for item in all_items:
+            item_type = item.get("type", "NOTE")
+            if item_type in type_distribution:
+                type_distribution[item_type] += 1
+        
+        # Status distribution
+        status_distribution = {"TODO": 0, "IN_PROGRESS": 0, "DONE": 0, "SCHEDULED": 0}
+        for item in all_items:
+            status = item.get("status")
+            if status and status in status_distribution:
+                status_distribution[status] += 1
+        
+        # Productivity trend (items per date)
+        date_counts = {}
+        for item in all_items:
+            date = item.get("date", "")
+            date_counts[date] = date_counts.get(date, 0) + 1
+        
+        productivity_trend = [
+            {"date": date, "count": date_counts.get(date, 0)}
+            for date in sorted(set(all_dates))[-30:]  # Last 30 days
+        ]
+        
+        # Active days and streaks
+        unique_dates = sorted(set(all_dates))
+        active_days = len(unique_dates)
+        
+        # Calculate current streak (consecutive days from today backwards)
+        today = datetime.now().strftime("%d-%m-%Y")
+        current_streak = 0
+        if unique_dates:
+            # Check if today or recent dates are in the list
+            date_set = set(unique_dates)
+            check_date = datetime.now()
+            while True:
+                date_str = check_date.strftime("%d-%m-%Y")
+                if date_str in date_set:
+                    current_streak += 1
+                    check_date = datetime(check_date.year, check_date.month, check_date.day - 1)
+                else:
+                    break
+        
+        # Calculate longest streak
+        longest_streak = 0
+        if unique_dates:
+            current_streak_calc = 1
+            for i in range(1, len(unique_dates)):
+                # Parse dates and check if consecutive
+                try:
+                    prev_date = datetime.strptime(unique_dates[i-1], "%d-%m-%Y")
+                    curr_date = datetime.strptime(unique_dates[i], "%d-%m-%Y")
+                    diff = (curr_date - prev_date).days
+                    if diff == 1:
+                        current_streak_calc += 1
+                    else:
+                        longest_streak = max(longest_streak, current_streak_calc)
+                        current_streak_calc = 1
+                except:
+                    pass
+            longest_streak = max(longest_streak, current_streak_calc)
+        
+        # Items by day of week
+        items_by_day = {"Monday": 0, "Tuesday": 0, "Wednesday": 0, "Thursday": 0, "Friday": 0, "Saturday": 0, "Sunday": 0}
+        day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        for date_str in unique_dates:
+            try:
+                date_obj = datetime.strptime(date_str, "%d-%m-%Y")
+                day_name = day_names[date_obj.weekday()]
+                items_by_day[day_name] += date_counts.get(date_str, 0)
+            except:
+                pass
+        
+        return {
+            "completion_rate": round(completion_rate, 1),
+            "total_items": len(all_items),
+            "total_tasks": total_tasks,
+            "completed_tasks": completed_tasks,
+            "type_distribution": type_distribution,
+            "status_distribution": status_distribution,
+            "productivity_trend": productivity_trend,
+            "active_days": active_days,
+            "current_streak": current_streak,
+            "longest_streak": longest_streak,
+            "items_by_day_of_week": items_by_day
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch analytics: {str(e)}")
 
 
 async def merge_items_with_llm(existing_items: list, new_items: list, date: str) -> list:
@@ -442,6 +571,104 @@ Do not include any markdown formatting or explanations, just the JSON."""
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
+
+
+@app.post("/api/query")
+async def query_documents(query: dict = Body(...)):
+    """
+    Query all documents from the database using GPT OSS model.
+    Takes all documents, formats them, appends user question, and returns AI response.
+    """
+    try:
+        user_question = query.get("question", "")
+        if not user_question:
+            raise HTTPException(status_code=400, detail="Question is required")
+        
+        # Get all documents from database
+        scans_collection = database.scans
+        all_documents = []
+        async for scan in scans_collection.find().sort("date", 1):
+            all_documents.append({
+                "date": scan.get("date", ""),
+                "items": scan.get("items", [])
+            })
+        
+        # Format all documents into a readable text format
+        formatted_documents = "All Bullet Journal Entries:\n\n"
+        for doc in all_documents:
+            formatted_documents += f"Date: {doc['date']}\n"
+            formatted_documents += "Items:\n"
+            for item in doc.get("items", []):
+                item_type = item.get("type", "UNKNOWN")
+                item_status = item.get("status", "")
+                item_content = item.get("content", "")
+                status_text = f" ({item_status})" if item_status else ""
+                formatted_documents += f"  - [{item_type}]{status_text}: {item_content}\n"
+            formatted_documents += "\n"
+        
+        # Create prompt with all documents and user question
+        prompt = f"""{formatted_documents}
+
+User Question: {user_question}
+
+Please provide a helpful answer based on the bullet journal entries above. 
+IMPORTANT INSTRUCTIONS:
+- Respond in natural, conversational language
+- Do NOT use markdown formatting (no #, **, *, `, etc.)
+- You may use HTML tags like <p>, <strong>, <em>, <ul>, <li>, <br> for structure if needed
+- Be concise and relevant
+- Write as if you're having a natural conversation"""
+
+        # Call Groq API with same configuration as merge function
+        completion = groq_client.chat.completions.create(
+            model="openai/gpt-oss-120b",
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            temperature=1,
+            top_p=1,
+            stream=False,
+            stop=None
+        )
+        
+        # Extract response content
+        response_content = completion.choices[0].message.content
+        
+        # Clean up any markdown formatting and convert to HTML
+        # Remove markdown headers (keep text, remove #)
+        response_content = re.sub(r'^#{1,6}\s+', '', response_content, flags=re.MULTILINE)
+        # Convert markdown bold to HTML strong
+        response_content = re.sub(r'\*\*([^*]+)\*\*', r'<strong>\1</strong>', response_content)
+        # Convert markdown italic to HTML em (single asterisk, not double)
+        response_content = re.sub(r'(?<!\*)\*([^*\n]+?)\*(?!\*)', r'<em>\1</em>', response_content)
+        # Remove markdown code blocks but keep content
+        response_content = re.sub(r'```[\w]*\n?([\s\S]*?)```', r'\1', response_content)
+        response_content = re.sub(r'`([^`\n]+)`', r'<code>\1</code>', response_content)
+        # Convert markdown links to plain text
+        response_content = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', response_content)
+        # Split into paragraphs (double newlines)
+        paragraphs = [p.strip() for p in re.split(r'\n\s*\n', response_content) if p.strip()]
+        # Wrap each paragraph in <p> tags and convert single newlines to <br>
+        html_paragraphs = []
+        for para in paragraphs:
+            # Convert single line breaks to <br> within paragraphs
+            para = para.replace('\n', '<br>')
+            html_paragraphs.append(f'<p>{para}</p>')
+        
+        response_content = ''.join(html_paragraphs) if html_paragraphs else f'<p>{response_content}</p>'
+        
+        return {
+            "response": response_content,
+            "documents_count": len(all_documents)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error querying documents: {str(e)}")
 
 
 if __name__ == "__main__":
