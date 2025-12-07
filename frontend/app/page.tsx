@@ -311,9 +311,39 @@ export default function Home() {
     }
   }
 
+  // Group items by type and status for JIRA-style board
+  const groupItemsByTypeAndStatus = useCallback(() => {
+    const grouped: Record<string, Record<string, Array<{ item: BuJoItem; originalIndex: number }>>> = {
+      TASK: { TODO: [], IN_PROGRESS: [], DONE: [], SCHEDULED: [] },
+      EVENT: { TODO: [], IN_PROGRESS: [], DONE: [], SCHEDULED: [] },
+      NOTE: { TODO: [], IN_PROGRESS: [], DONE: [], SCHEDULED: [] }
+    }
+
+    dbItems.forEach((item, index) => {
+      const type = item.type || 'NOTE'
+      // For NOTES, use TODO as default status if no status is set
+      // For other types, use their status or default to TODO
+      let status = item.status || 'TODO'
+      
+      // If it's a NOTE and has no status, put it in TODO column
+      if (type === 'NOTE' && !item.status) {
+        status = 'TODO'
+      }
+      
+      if (!grouped[type]) grouped[type] = {}
+      if (!grouped[type][status]) grouped[type][status] = []
+      grouped[type][status].push({ item, originalIndex: index })
+    })
+
+    return grouped
+  }, [dbItems])
+
   const hasPrevious = availableDates.length > 0 && availableDates.indexOf(selectedDate) > 0
   const hasNext = availableDates.length > 0 && availableDates.indexOf(selectedDate) < availableDates.length - 1
   const dateExists = availableDates.includes(selectedDate)
+
+  const statusOrder = ['TODO', 'IN_PROGRESS', 'SCHEDULED', 'DONE']
+  const typeOrder = ['TASK', 'EVENT', 'NOTE']
 
   return (
     <div className="relative z-10 max-w-4xl mx-auto px-4 py-4 md:py-6">
@@ -325,12 +355,14 @@ export default function Home() {
 
       {/* Compact Header */}
       <header className="mb-4 text-center">
-        <div className="inline-flex items-center justify-center p-2 mb-2 rounded-xl bg-brand-500/10 border border-brand-500/20">
-          <Notebook className="text-2xl text-brand-400" weight="bold" />
+        <div className="inline-flex items-center justify-center gap-3">
+          <div className="inline-flex items-center justify-center p-2 rounded-xl bg-brand-500/10 border border-brand-500/20">
+            <Notebook className="text-2xl text-brand-400" weight="bold" />
+          </div>
+          <h1 className="text-2xl md:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white via-gray-200 to-gray-400 tracking-tight">
+            BuJo Companion
+          </h1>
         </div>
-        <h1 className="text-2xl md:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white via-gray-200 to-gray-400 mb-1 tracking-tight">
-          BuJo Companion
-        </h1>
       </header>
 
       {/* Compact Scanner Section */}
@@ -412,21 +444,21 @@ export default function Home() {
       </section>
 
       {/* Date Navigation and Items Section */}
-      <section className="glass-card p-3 md:p-4 rounded-2xl">
+      <section className="glass-card p-2 md:p-3 rounded-2xl">
         {/* Date Navigation */}
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-2">
           <button
             onClick={navigatePrevious}
             disabled={availableDates.length === 0}
-            className="p-1.5 rounded-lg bg-dark-card hover:bg-dark-border border border-dark-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            className="p-1 rounded-lg bg-dark-card hover:bg-dark-border border border-dark-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           >
-            <CaretLeft className="text-lg text-gray-300" weight="bold" />
+            <CaretLeft className="text-base text-gray-300" weight="bold" />
           </button>
           
           <div className="flex items-center gap-2 flex-1 justify-center">
-            <Calendar className="text-brand-400 text-lg" weight="bold" />
+            <Calendar className="text-brand-400 text-base" weight="bold" />
             <div className="text-center">
-              <div className="text-base font-semibold text-gray-200">{selectedDate}</div>
+              <div className="text-sm font-semibold text-gray-200">{selectedDate}</div>
               {!dateExists && (
                 <div className="text-xs text-gray-500 mt-0.5">No data for this date</div>
               )}
@@ -436,58 +468,109 @@ export default function Home() {
           <button
             onClick={navigateNext}
             disabled={availableDates.length === 0}
-            className="p-1.5 rounded-lg bg-dark-card hover:bg-dark-border border border-dark-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            className="p-1 rounded-lg bg-dark-card hover:bg-dark-border border border-dark-border disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           >
-            <CaretRight className="text-lg text-gray-300" weight="bold" />
+            <CaretRight className="text-base text-gray-300" weight="bold" />
           </button>
         </div>
 
-        {/* Items List */}
+        {/* Items Board - Side by Side Layout */}
         {loadingDate ? (
-          <div className="text-center py-6 text-gray-400 text-sm">Loading...</div>
+          <div className="text-center py-4 text-gray-400 text-sm">Loading...</div>
         ) : dbItems.length > 0 ? (
-          <div className="space-y-1.5">
-            {dbItems.map((item, index) => (
-              <div
-                key={index}
-                className="glass-card p-2 rounded-lg flex items-center gap-2 hover:bg-dark-card/50 transition-colors"
-              >
-                <div className="shrink-0 cursor-pointer" onClick={() => toggleStatus(index)}>
-                  {getItemIcon(item)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <input
-                    type="text"
-                    value={item.content || ''}
-                    onChange={(e) => updateContent(index, e.target.value)}
-                    className={`bg-transparent border-none w-full focus:ring-0 p-0 text-sm ${getItemStatusColor(item)}`}
-                  />
-                  <div className="flex gap-1.5 mt-0.5">
-                    <span
-                      className="text-[9px] uppercase tracking-wider font-semibold text-gray-500 bg-black/20 px-1 py-0.5 rounded border border-white/5 cursor-pointer"
-                      onClick={() => cycleType(index)}
-                    >
-                      {item.type}
-                    </span>
-                    {item.status && (
-                      <span className="text-[9px] uppercase tracking-wider font-semibold text-gray-500 bg-black/20 px-1 py-0.5 rounded border border-white/5">
-                        {item.status}
-                      </span>
-                    )}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {(() => {
+              const grouped = groupItemsByTypeAndStatus()
+              
+              return typeOrder.map((type) => {
+                const typeItems = grouped[type] || {}
+                const totalItems = statusOrder.reduce((sum, status) => sum + (typeItems[status]?.length || 0), 0)
+                
+                // Determine relevant statuses for each type
+                const relevantStatuses = type === 'TASK' 
+                  ? ['TODO', 'IN_PROGRESS', 'DONE'] 
+                  : type === 'EVENT'
+                  ? ['SCHEDULED', 'DONE']
+                  : ['TODO'] // NOTES
+                
+                return (
+                  <div key={type} className="flex flex-col space-y-3">
+                    {/* Category Header - Most Prominent */}
+                    <div className="px-4 py-3 rounded-xl bg-gradient-to-r from-brand-500/20 to-purple-500/20 border-2 border-brand-500/30 shadow-lg">
+                      <div className="flex items-center justify-between">
+                        <span className="text-base font-bold uppercase tracking-wider text-white">
+                          {type}S
+                        </span>
+                        <span className="text-xs font-semibold text-gray-200 bg-brand-500/30 px-2.5 py-1 rounded-full border border-brand-400/50">
+                          {totalItems}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    {/* Status Sections - Stacked Vertically */}
+                    <div className="flex flex-col space-y-2.5 flex-1">
+                      {relevantStatuses.map((status) => {
+                        const items = typeItems[status] || []
+                        
+                        // Only show status section if it has items
+                        if (items.length === 0) return null
+                        
+                        return (
+                          <div key={status} className="flex flex-col">
+                            {/* Subcategory Header - Medium Prominence - More Distinct */}
+                            <div className="px-3 py-2.5 mb-2.5 rounded-lg bg-gradient-to-r from-dark-card/80 to-dark-card/60 border-l-4 border-brand-400/50 shadow-md">
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm font-bold uppercase tracking-wider text-gray-200">
+                                  {status.replace('_', ' ')}
+                                </span>
+                                <span className="text-xs font-semibold text-white bg-brand-500/40 px-2 py-1 rounded-full border border-brand-400/30">
+                                  {items.length}
+                                </span>
+                              </div>
+                            </div>
+                            
+                            {/* Items in Status Section - Least Prominent */}
+                            <div className="space-y-1.5 flex-1 ml-2">
+                              {items.map(({ item, originalIndex }) => (
+                                <div
+                                  key={originalIndex}
+                                  className="glass-card p-2.5 rounded-md hover:bg-dark-card/40 transition-all border border-dark-border/30 hover:border-dark-border/50 hover:shadow-sm"
+                                >
+                                  <div className="flex items-start gap-2">
+                                    <div className="shrink-0 cursor-pointer mt-0.5" onClick={() => type === 'NOTE' ? cycleType(originalIndex) : toggleStatus(originalIndex)}>
+                                      {getItemIcon(item)}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <input
+                                        type="text"
+                                        value={item.content || ''}
+                                        onChange={(e) => updateContent(originalIndex, e.target.value)}
+                                        className={`bg-transparent border-none w-full focus:ring-0 p-0 text-sm ${getItemStatusColor(item)}`}
+                                        placeholder="Item content..."
+                                      />
+                                    </div>
+                                    <button
+                                      onClick={() => deleteItem(originalIndex)}
+                                      className="text-gray-500 hover:text-red-400 transition-colors shrink-0 p-1"
+                                    >
+                                      <Trash className="text-xs" weight="bold" />
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
                   </div>
-                </div>
-                <button
-                  onClick={() => deleteItem(index)}
-                  className="text-gray-500 hover:text-red-400 transition-colors shrink-0 p-1"
-                >
-                  <Trash className="text-sm" weight="bold" />
-                </button>
-              </div>
-            ))}
+                )
+              })
+            })()}
           </div>
         ) : (
-          <div className="text-center py-6 text-gray-500">
-            <ListChecks className="text-3xl mx-auto mb-2 opacity-50" weight="bold" />
+          <div className="text-center py-4 text-gray-500">
+            <ListChecks className="text-2xl mx-auto mb-1.5 opacity-50" weight="bold" />
             <p className="text-sm">No items found for this date</p>
             <p className="text-xs mt-1">Scan a page to get started!</p>
           </div>

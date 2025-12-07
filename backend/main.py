@@ -189,9 +189,7 @@ Do not include any markdown formatting or explanations, just the JSON array."""
                 }
             ],
             temperature=1,
-            max_completion_tokens=8192,
             top_p=1,
-            reasoning_effort="medium",
             stream=False,
             stop=None
         )
@@ -321,6 +319,14 @@ Do not include any markdown formatting or explanations, just the JSON."""
             
             data = response.json()
             content = data["choices"][0]["message"]["content"]
+            
+            # Log Groq VLM response
+            print("=" * 80)
+            print("GROQ VLM RESPONSE:")
+            print("=" * 80)
+            print(f"Full response data: {json.dumps(data, indent=2)}")
+            print(f"Content: {content}")
+            print("=" * 80)
             
             # Parse JSON response
             try:
