@@ -29,6 +29,7 @@ interface BuJoItem {
   type: 'TASK' | 'EVENT' | 'NOTE'
   status: 'TODO' | 'DONE' | 'IN_PROGRESS' | 'SCHEDULED' | null
   content: string
+  subtasks?: BuJoItem[]
 }
 
 function formatDate(date: Date): string {
@@ -432,7 +433,7 @@ export default function Home() {
       </header>
 
       {/* Two Column Layout */}
-      <div className="grid grid-cols-1 md:grid-cols-[35%_65%] gap-2">
+      <div className="grid grid-cols-1 md:grid-cols-[3.5fr_6.5fr] gap-2">
         {/* Left Column - Scanner/Query and Dashboard */}
         <div className="space-y-2">
           {/* Scanner and Query Section */}
@@ -609,9 +610,9 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Activity Calendar */}
-                <div className="p-3 rounded-lg bg-dark-card/30 border border-dark-border/50">
-                  <div className="max-w-[60%] mx-auto">
+                <div className="grid grid-cols-2 gap-2">
+                  {/* Activity Calendar */}
+                  <div className="p-3 rounded-lg bg-dark-card/30 border border-dark-border/50">
                     <div className="flex items-center justify-between mb-4">
                       <button
                         onClick={() => {
@@ -623,8 +624,8 @@ export default function Home() {
                       >
                         <CaretLeft className="text-gray-400" />
                       </button>
-                      <span className="text-sm font-bold text-gray-200">
-                        {calendarDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
+                      <span className="text-xs font-bold text-gray-200 truncate mx-1">
+                        {calendarDate.toLocaleString('default', { month: 'short', year: '2-digit' })}
                       </span>
                       <button
                         onClick={() => {
@@ -639,8 +640,8 @@ export default function Home() {
                     </div>
 
                     <div className="grid grid-cols-7 gap-1 mb-2">
-                      {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-                        <div key={day} className="text-center text-[10px] font-medium text-gray-500 uppercase">
+                      {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(day => (
+                        <div key={day} className="text-center text-[8px] font-medium text-gray-500 uppercase">
                           {day}
                         </div>
                       ))}
@@ -669,7 +670,6 @@ export default function Home() {
 
                         for (let day = 1; day <= daysInMonth; day++) {
                           const dateObj = new Date(year, month, day)
-                          // Construct date string in DD-MM-YYYY format to match backend/analytics data
                           const dateStr = `${String(day).padStart(2, '0')}-${String(month + 1).padStart(2, '0')}-${year}`
                           const formattedForSelection = formatDate(dateObj)
                           const count = productivityMap.get(dateStr) || 0
@@ -681,8 +681,8 @@ export default function Home() {
                               key={day}
                               onClick={() => setSelectedDate(formattedForSelection)}
                               className={`aspect-square relative flex items-center justify-center group cursor-pointer rounded-lg transition-all z-0
-                              ${isSelected ? 'bg-brand-500/20 ring-1 ring-brand-400' : 'hover:bg-dark-card/50'}
-                            `}
+                                ${isSelected ? 'bg-brand-500/20 ring-1 ring-brand-400' : 'hover:bg-dark-card/50'}
+                              `}
                             >
                               {/* Circle Background - Bubble Style */}
                               {count > 0 && (
@@ -696,7 +696,7 @@ export default function Home() {
                               )}
 
                               {/* Day Number */}
-                              <span className={`relative z-10 text-xs ${isToday ? 'text-brand-400 font-bold' : isSelected ? 'text-white font-semibold' : 'text-gray-300'} ${count > 0 ? 'font-medium' : ''}`}>
+                              <span className={`relative z-10 text-[10px] ${isToday ? 'text-brand-400 font-bold' : isSelected ? 'text-white font-semibold' : 'text-gray-300'} ${count > 0 ? 'font-medium' : ''}`}>
                                 {day}
                               </span>
 
@@ -712,6 +712,41 @@ export default function Home() {
 
                         return days
                       })()}
+                    </div>
+                  </div>
+
+                  {/* Weekly Progress Chart */}
+                  <div className="p-3 rounded-lg bg-dark-card/30 border border-dark-border/50 flex flex-col">
+                    <div className="flex items-center gap-1.5 mb-4">
+                      <ChartBar className="text-brand-400 text-sm" weight="bold" />
+                      <h3 className="text-xs font-bold text-gray-200">This Week</h3>
+                    </div>
+
+                    <div className="flex-1 flex items-end justify-between gap-1">
+                      {analytics.productivity_trend.slice(-7).map((item: any, index: number) => {
+                        // Infer total from item if available, otherwise assume count is a portion or max 10
+                        // Defaulting max scale to highest value in view to keep bars proportional
+                        const total = item.total_count || Math.max(item.count, 5);
+                        const completed = item.count;
+                        const maxInView = Math.max(...analytics.productivity_trend.slice(-7).map((i: any) => i.total_count || Math.max(i.count, 5)), 1);
+
+                        const completedHeight = (completed / maxInView) * 100
+                        const totalHeight = (total / maxInView) * 100
+                        const dayLabel = new Date(item.date.split('-').reverse().join('-')).toLocaleDateString('en-US', { weekday: 'narrow' })
+
+                        return (
+                          <div key={index} className="flex-1 flex flex-col items-center gap-1 h-full justify-end">
+                            <div className="w-full max-w-[12px] relative rounded-full bg-dark-card/50 overflow-hidden" style={{ height: `${Math.max(totalHeight, 5)}%`, minHeight: '4px' }}>
+                              {/* Completed Portion */}
+                              <div
+                                className="absolute bottom-0 left-0 right-0 bg-brand-500 rounded-full transition-all duration-500"
+                                style={{ height: `${(completed / total) * 100}%` }}
+                              />
+                            </div>
+                            <span className="text-[9px] text-gray-500 uppercase">{dayLabel}</span>
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
                 </div>
@@ -828,6 +863,19 @@ export default function Home() {
                                             className={`bg-transparent border-none w-full focus:ring-0 p-0 text-xs ${getItemStatusColor(item)}`}
                                             placeholder="Item content..."
                                           />
+                                          {/* Subtasks */}
+                                          {item.subtasks && item.subtasks.length > 0 && (
+                                            <div className="mt-1 flex flex-col space-y-0.5 ml-1">
+                                              {item.subtasks.map((sub, subIdx) => (
+                                                <div key={subIdx} className="flex items-start gap-1.5 group/sub">
+                                                  <div className="shrink-0 mt-1 w-1 h-1 rounded-full bg-gray-500"></div>
+                                                  <span className={`text-[10px] text-gray-400 ${sub.status === 'DONE' ? 'line-through opacity-70' : ''}`}>
+                                                    {sub.content}
+                                                  </span>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
                                         </div>
                                         <button
                                           onClick={() => deleteItem(originalIndex)}

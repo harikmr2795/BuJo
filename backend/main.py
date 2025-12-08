@@ -303,7 +303,14 @@ Your task:
 
 Return the merged items as a JSON array matching this schema:
 [
-  {{ "type": "TASK"|"EVENT"|"NOTE", "status": "TODO"|"DONE"|"IN_PROGRESS"|"SCHEDULED", "content": "string" }}
+  {{ 
+    "type": "TASK"|"EVENT"|"NOTE", 
+    "status": "TODO"|"DONE"|"IN_PROGRESS"|"SCHEDULED", 
+    "content": "string",
+    "subtasks": [
+      {{ "type": "...", "status": "...", "content": "string" }}
+    ]
+  }}
 ]
 
 Do not include any markdown formatting or explanations, just the JSON array."""
@@ -406,7 +413,11 @@ Return ONLY a valid JSON object with this structure:
 {{
   "date": "DD-MM-YYYY",
   "items": [
-    {{ "type": "TASK"|"EVENT"|"NOTE", "status": "TODO"|"DONE"|"IN_PROGRESS"|"SCHEDULED", "content": "string" }}
+    {{ 
+      "type": "TASK"|"EVENT"|"NOTE", 
+      "status": "TODO"|"DONE"|"IN_PROGRESS"|"SCHEDULED", 
+      "content": "string"
+    }}
   ]
 }}
 
