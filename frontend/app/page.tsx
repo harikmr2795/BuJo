@@ -22,8 +22,11 @@ import {
   PaperPlaneTilt,
   ChartBar,
   TrendUp,
-  Fire
+  Fire,
+  ArrowsOutSimple
 } from '@phosphor-icons/react'
+
+import ImagePreviewModal from './components/ImagePreviewModal'
 
 interface BuJoItem {
   type: 'TASK' | 'EVENT' | 'NOTE'
@@ -46,6 +49,7 @@ export default function Home() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [progress, setProgress] = useState(0)
   const [progressStatus, setProgressStatus] = useState('')
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false)
 
   // Date navigation state
   const [selectedDate, setSelectedDate] = useState<string>(formatDate(new Date()))
@@ -161,6 +165,7 @@ export default function Home() {
       const reader = new FileReader()
       reader.onload = (event) => {
         setImagePreview(event.target?.result as string)
+        setIsPreviewModalOpen(true)
       }
       reader.readAsDataURL(file)
     }
@@ -169,6 +174,7 @@ export default function Home() {
   const removeImage = useCallback(() => {
     setImageFile(null)
     setImagePreview(null)
+    setIsPreviewModalOpen(false)
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
@@ -325,6 +331,7 @@ export default function Home() {
       const reader = new FileReader()
       reader.onload = (event) => {
         setImagePreview(event.target?.result as string)
+        setIsPreviewModalOpen(true)
       }
       reader.readAsDataURL(file)
     }
@@ -432,6 +439,14 @@ export default function Home() {
         </div>
       </header>
 
+      <ImagePreviewModal
+        isOpen={isPreviewModalOpen}
+        onClose={() => setIsPreviewModalOpen(false)}
+        imageSrc={imagePreview}
+        onExtract={processImage}
+        isProcessing={isProcessing}
+      />
+
       {/* Two Column Layout */}
       <div className="grid grid-cols-1 md:grid-cols-[3.5fr_6.5fr] gap-2">
         {/* Left Column - Scanner/Query and Dashboard */}
@@ -469,30 +484,39 @@ export default function Home() {
                     </>
                   ) : (
                     <div className="flex items-center gap-2">
-                      <div className="w-10 h-10 rounded-lg overflow-hidden bg-dark-card shrink-0 relative group/preview">
-                        <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
+                      <div
+                        className="w-10 h-10 rounded-lg overflow-hidden bg-dark-card shrink-0 relative group/preview cursor-pointer hover:ring-1 hover:ring-brand-400 transition-all"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setIsPreviewModalOpen(true)
+                        }}
+                        title="Click to view large preview"
+                      >
+                        <img src={imagePreview} alt="Preview" className="w-full h-full object-cover opacity-70 group-hover/preview:opacity-100 transition-opacity" />
+                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/preview:opacity-100 transition-opacity">
+                          <ArrowsOutSimple className="text-white drop-shadow-md" weight="bold" />
+                        </div>
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
                             removeImage()
                           }}
-                          className="absolute inset-0 bg-black/60 hover:bg-red-500/80 backdrop-blur-sm flex items-center justify-center opacity-0 group-hover/preview:opacity-100 transition-opacity"
+                          className="absolute top-0 right-0 p-0.5 bg-black/60 hover:bg-red-500 text-white opacity-0 group-hover/preview:opacity-100 transition-all"
                         >
-                          <X className="text-white text-xs" weight="bold" />
+                          <X size={8} weight="bold" />
                         </button>
                       </div>
-                      {imagePreview && !isProcessing && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            processImage()
-                          }}
-                          className="btn-primary text-xs py-1.5 px-3 shrink-0"
-                        >
-                          <MagicWand className="mr-1.5" weight="bold" />
-                          Extract
-                        </button>
-                      )}
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setIsPreviewModalOpen(true)
+                        }}
+                        className="btn-primary text-xs py-1.5 px-3 shrink-0"
+                      >
+                        <MagicWand className="mr-1.5" weight="bold" />
+                        Review Scan
+                      </button>
                     </div>
                   )}
                 </div>
@@ -513,7 +537,7 @@ export default function Home() {
                       }
                     }}
                     onClick={(e) => e.stopPropagation()}
-                    placeholder="Ask a question about your bullet journal entries..."
+                    placeholder="Chat with BuJo"
                     className="flex-1 bg-transparent border-none outline-none text-sm text-gray-200 placeholder:text-gray-500"
                     disabled={isQuerying}
                   />
@@ -748,14 +772,14 @@ export default function Home() {
                     </div>
 
                     {/* Busiest Day */}
-                    <div className="mt-3 pt-2 border-t border-dark-border/30 flex items-center justify-between">
-                      <div className="text-[10px] text-gray-500">Most Active Day</div>
-                      <div className="text-xs font-bold text-white bg-dark-card px-2 py-1 rounded border border-dark-border">
-                        {analytics.total_items > 0
-                          ? Object.entries(analytics.items_by_day_of_week as Record<string, number>).reduce((a, b) => a[1] >= b[1] ? a : b)[0]
-                          : 'No data'}
+                    {analytics.total_items > 0 && (
+                      <div className="mt-3 pt-2 border-t border-dark-border/30 flex items-center justify-between">
+                        <div className="text-[10px] text-gray-500">Most Active Day</div>
+                        <div className="text-xs font-bold text-white bg-dark-card px-2 py-1 rounded border border-dark-border">
+                          {Object.entries(analytics.items_by_day_of_week as Record<string, number>).reduce((a, b) => a[1] >= b[1] ? a : b)[0]}
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 </div>
               </>
@@ -782,9 +806,6 @@ export default function Home() {
                 <Calendar className="text-brand-400 text-base" weight="bold" />
                 <div className="text-center">
                   <div className="text-base md:text-lg font-bold text-gray-200">{selectedDate}</div>
-                  {!dateExists && (
-                    <div className="text-[10px] text-gray-500 mt-0.5">No data</div>
-                  )}
                 </div>
               </div>
 
