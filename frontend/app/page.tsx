@@ -559,13 +559,9 @@ export default function Home() {
 
             {/* Query Response */}
             {queryResponse && (
-              <div className="p-4 rounded-xl bg-dark-card/60 border border-dark-border/50">
-                <div className="flex items-start gap-2 mb-2">
-                  <Question className="text-brand-400 text-lg shrink-0 mt-0.5" weight="bold" />
-                  <div className="text-xs font-semibold uppercase tracking-wider text-gray-400">Response</div>
-                </div>
+              <div className="p-4 rounded-xl bg-dark-card/60 border border-dark-border/50 max-h-[300px] overflow-y-auto scrollbar-thin scrollbar-thumb-brand-500/20 scrollbar-track-transparent">
                 <div
-                  className="text-sm text-gray-200 leading-relaxed [&_p]:mb-2 [&_p:last-child]:mb-0 [&_strong]:font-semibold [&_strong]:text-white [&_em]:italic [&_code]:bg-dark-card/50 [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs [&_ul]:list-disc [&_ul]:ml-4 [&_ul]:mb-2 [&_li]:mb-1"
+                  className="text-sm text-gray-200 leading-tight [&_p]:mb-1 [&_p:last-child]:mb-0 [&_strong]:font-semibold [&_strong]:text-white [&_em]:italic [&_code]:bg-dark-card/50 [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-[10px] [&_ul]:list-disc [&_ul]:ml-4 [&_ul]:mb-1 [&_li]:mb-0.5"
                   dangerouslySetInnerHTML={{ __html: queryResponse }}
                 />
               </div>
@@ -715,38 +711,50 @@ export default function Home() {
                     </div>
                   </div>
 
-                  {/* Weekly Progress Chart */}
-                  <div className="p-3 rounded-lg bg-dark-card/30 border border-dark-border/50 flex flex-col">
-                    <div className="flex items-center gap-1.5 mb-4">
-                      <ChartBar className="text-brand-400 text-sm" weight="bold" />
-                      <h3 className="text-xs font-bold text-gray-200">This Week</h3>
+                  {/* Journal Insights */}
+                  <div className="p-3 rounded-lg bg-dark-card/30 border border-dark-border/50 flex flex-col justify-between">
+                    <div className="flex items-center gap-1.5 mb-3">
+                      <TrendUp className="text-brand-400 text-sm" weight="bold" />
+                      <h3 className="text-xs font-bold text-gray-200">Journal Insights</h3>
                     </div>
 
-                    <div className="flex-1 flex items-end justify-between gap-1">
-                      {analytics.productivity_trend.slice(-7).map((item: any, index: number) => {
-                        // Infer total from item if available, otherwise assume count is a portion or max 10
-                        // Defaulting max scale to highest value in view to keep bars proportional
-                        const total = item.total_count || Math.max(item.count, 5);
-                        const completed = item.count;
-                        const maxInView = Math.max(...analytics.productivity_trend.slice(-7).map((i: any) => i.total_count || Math.max(i.count, 5)), 1);
-
-                        const completedHeight = (completed / maxInView) * 100
-                        const totalHeight = (total / maxInView) * 100
-                        const dayLabel = new Date(item.date.split('-').reverse().join('-')).toLocaleDateString('en-US', { weekday: 'narrow' })
-
+                    {/* Type Distribution */}
+                    <div className="space-y-3 flex-1">
+                      {[
+                        { label: 'Tasks', type: 'TASK', color: 'bg-brand-500', text: 'text-brand-400' },
+                        { label: 'Events', type: 'EVENT', color: 'bg-purple-500', text: 'text-purple-400' },
+                        { label: 'Notes', type: 'NOTE', color: 'bg-yellow-500', text: 'text-yellow-400' }
+                      ].map(cat => {
+                        const count = analytics.type_distribution[cat.type] || 0
+                        const pct = analytics.total_items > 0 ? (count / analytics.total_items) * 100 : 0
                         return (
-                          <div key={index} className="flex-1 flex flex-col items-center gap-1 h-full justify-end">
-                            <div className="w-full max-w-[12px] relative rounded-full bg-dark-card/50 overflow-hidden" style={{ height: `${Math.max(totalHeight, 5)}%`, minHeight: '4px' }}>
-                              {/* Completed Portion */}
+                          <div key={cat.type} className="space-y-1">
+                            <div className="flex justify-between items-end text-[10px]">
+                              <span className="text-gray-400 font-medium">{cat.label}</span>
+                              <div className="flex items-center gap-1">
+                                <span className={`${cat.text} font-bold`}>{count}</span>
+                                <span className="text-gray-600">/ {Math.round(pct)}%</span>
+                              </div>
+                            </div>
+                            <div className="h-1.5 w-full bg-dark-card rounded-full overflow-hidden border border-dark-border/30">
                               <div
-                                className="absolute bottom-0 left-0 right-0 bg-brand-500 rounded-full transition-all duration-500"
-                                style={{ height: `${(completed / total) * 100}%` }}
+                                className={`h-full ${cat.color} rounded-full transition-all duration-500`}
+                                style={{ width: `${pct}%` }}
                               />
                             </div>
-                            <span className="text-[9px] text-gray-500 uppercase">{dayLabel}</span>
                           </div>
                         )
                       })}
+                    </div>
+
+                    {/* Busiest Day */}
+                    <div className="mt-3 pt-2 border-t border-dark-border/30 flex items-center justify-between">
+                      <div className="text-[10px] text-gray-500">Most Active Day</div>
+                      <div className="text-xs font-bold text-white bg-dark-card px-2 py-1 rounded border border-dark-border">
+                        {analytics.total_items > 0
+                          ? Object.entries(analytics.items_by_day_of_week as Record<string, number>).reduce((a, b) => a[1] >= b[1] ? a : b)[0]
+                          : 'No data'}
+                      </div>
                     </div>
                   </div>
                 </div>

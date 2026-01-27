@@ -284,8 +284,11 @@ async def merge_items_with_llm(existing_items: list, new_items: list, date: str)
     Returns merged and deduplicated items.
     """
     try:
+        # Get today's date for context
+        today_date = datetime.now().strftime("%d-%m-%Y")
+        
         # Prepare the prompt for merging
-        prompt = f"""You are merging bullet journal items for date {date}.
+        prompt = f"""Today's date is {today_date}. You are merging bullet journal items for the specific journal date {date}.
 
 Existing items in the database:
 {json.dumps(existing_items, indent=2)}
@@ -617,18 +620,24 @@ async def query_documents(query: dict = Body(...)):
                 formatted_documents += f"  - [{item_type}]{status_text}: {item_content}\n"
             formatted_documents += "\n"
         
+        # Get today's date for context
+        today_date = datetime.now().strftime("%d-%m-%Y")
+        
         # Create prompt with all documents and user question
-        prompt = f"""{formatted_documents}
+        prompt = f"""Today's date is {today_date}.
+
+{formatted_documents}
 
 User Question: {user_question}
 
 Please provide a helpful answer based on the bullet journal entries above. 
 IMPORTANT INSTRUCTIONS:
-- Respond in natural, conversational language
+- Be very concise and relevant and respond in natural, conversational language as the response will be read out aloud
 - Do NOT use markdown formatting (no #, **, *, `, etc.)
 - You may use HTML tags like <p>, <strong>, <em>, <ul>, <li>, <br> for structure if needed
-- Be concise and relevant
-- Write as if you're having a natural conversation"""
+- Use SINGLE line breaks for items within a list or category
+- Only use DOUBLE line breaks to separate major sections
+- Keep the response tightly spaced and avoid unnecessary gaps between related lines"""
 
         # Call Groq API with same configuration as merge function
         completion = groq_client.chat.completions.create(
@@ -649,6 +658,8 @@ IMPORTANT INSTRUCTIONS:
         response_content = completion.choices[0].message.content
         
         # Clean up any markdown formatting and convert to HTML
+        # Collapse multiple newlines (more than 2) into just 2
+        response_content = re.sub(r'\n{2,}', '\n', response_content.strip())
         # Remove markdown headers (keep text, remove #)
         response_content = re.sub(r'^#{1,6}\s+', '', response_content, flags=re.MULTILINE)
         # Convert markdown bold to HTML strong
@@ -685,4 +696,3 @@ IMPORTANT INSTRUCTIONS:
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
