@@ -155,7 +155,7 @@ async def get_scans():
     try:
         scans = []
         async for scan in scans_collection().find().sort("created_at", -1):
-            scans.append(serialize_scan_id(scan))
+            scans.append(serialize(scan))
         return {"scans": scans}
     except Exception as error:
         raise HTTPException(status_code=500, detail=f"Failed to fetch scans: {error}")
@@ -169,7 +169,7 @@ async def get_scan(scan_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to fetch scan: {error}")
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
-    return serialize_scan_id(scan)
+    return serialize(scan)
 
 
 @app.get("/api/scans/date/{date}")
@@ -178,7 +178,7 @@ async def get_scan_by_date(date: str):
         scan = await scans_collection().find_one({"date": date})
         if not scan:
             return {"date": date, "items": [], "created_at": None, "updated_at": None}
-        return serialize_scan_id(scan)
+        return serialize(scan)
     except Exception as error:
         raise HTTPException(status_code=500, detail=f"Failed to fetch scan: {error}")
 
